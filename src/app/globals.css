@@ -1,0 +1,46 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --color-brand-50: #ecfdf3;
+  --color-brand-100: #d1fadf;
+  --color-brand-200: #a6f4c5;
+  --color-brand-300: #6ce9a6;
+  --color-brand-400: #32d583;
+  --color-brand-500: #12b76a;
+  --color-brand-600: #00853f;
+  --color-brand-700: #027a48;
+  --color-brand-800: #05603a;
+  --color-brand-900: #054f31;
+  --color-sun: #fdef42;
+  --color-flag-red: #e31b23;
+}
+
+html { -webkit-font-smoothing: antialiased; }
+body { background: #f6f8f7; color: #101828; }
+
+@utility card { @apply rounded-2xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(16,24,40,0.04)]; }
+@utility input {
+  @apply w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition
+         placeholder:text-slate-400 focus:border-brand-500 focus:ring-4 focus:ring-brand-100 disabled:bg-slate-50;
+}
+@utility label { @apply mb-1.5 block text-sm font-medium text-slate-700; }
+@utility btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition
+         disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-4;
+}
+@utility btn-primary { @apply btn bg-brand-600 text-white shadow-sm hover:bg-brand-700 focus-visible:ring-brand-200; }
+@utility btn-secondary { @apply btn border border-slate-300 bg-white text-slate-700 shadow-sm hover:bg-slate-50 focus-visible:ring-slate-200; }
+@utility btn-danger { @apply btn bg-red-600 text-white shadow-sm hover:bg-red-700 focus-visible:ring-red-200; }
+@utility btn-ghost { @apply btn text-slate-600 hover:bg-slate-100; }
+.flag-bar { background: linear-gradient(90deg, #00853f 0 33.3%, #fdef42 33.3% 66.6%, #e31b23 66.6%); }
+
+@keyframes shimmer { 0% { background-position: -400px 0; } 100% { background-position: 400px 0; } }
+.progress-stripes {
+  background-image: linear-gradient(45deg, rgba(255,255,255,.25) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.25) 50%, rgba(255,255,255,.25) 75%, transparent 75%, transparent);
+  background-size: 1rem 1rem;
+  animation: stripes 1s linear infinite;
+}
+@keyframes stripes { from { background-position: 1rem 0; } to { background-position: 0 0; } }
+@keyframes fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.fade-in { animation: fade-in .25s ease-out both; }
