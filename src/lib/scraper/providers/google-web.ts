@@ -16,50 +16,56 @@ export const googleWeb: Provider = {
   async search(input, deadline) {
     const byKey = new Map<string, RawPlace>();
     const dist = Math.round(input.radiusKm * 1000 * 4);
-    const q = `${input.keyword} ${input.queryHint}`;
+    // Pas de virgule : « X, Dakar » est interprété comme une adresse et réduit les résultats.
+    const hint = input.queryHint.replace(/,/g, " ").replace(/\s+/g, " ").trim();
+    const city = /dakar/i.test(hint) ? "Dakar" : hint.split(" ").slice(-1)[0];
+    const queries = [`${input.keyword} ${hint}`, `${input.keyword} ${city} Sénégal`];
 
-    for (let offset = 0; offset < input.limit && offset <= 120 && Date.now() < deadline; offset += 20) {
-      const pb =
-        `!4m8!1m3!1d${dist}!2d${input.lng}!3d${input.lat}!3m2!1i1366!2i768!4f13.1` +
-        `!7i20!8i${offset}!10b1`;
-      const url =
-        `https://www.google.com/search?tbm=map&authuser=0&hl=fr&gl=sn` +
-        `&q=${encodeURIComponent(q)}&pb=${encodeURIComponent(pb)}`;
-      const res = await robustFetch(url, {
-        stealth: true,
-        retries: 1,
-        timeoutMs: 20_000,
-        headers: {
-          Accept: "*/*",
-          Referer: "https://www.google.com/maps",
-          // Consentement cookies pré-accepté (évite la page de consentement européenne).
-          Cookie: "CONSENT=YES+cb; SOCS=CAESHAgBEhJnd3NfMjAyMzA4MTAtMF9SQzIaAmZyIAEaBgiAo_CmBg",
-        },
-      });
-      if (res.status === 429 || /unusual traffic|\/sorry\/index|captcha/i.test(res.text.slice(0, 5000))) {
-        throw new ProviderError("Google a détecté un trafic automatisé (blocage temporaire)");
-      }
-      if (res.url.includes("consent.google")) throw new ProviderError("Page de consentement Google");
-      if (res.status >= 400) throw new ProviderError(`Google Maps HTTP ${res.status}`);
-
-      const data = parseGoogleJson(res.text);
-      if (data === undefined) throw new ProviderError("Format de réponse Google inattendu");
-
-      const places = extractPlaces(data);
-      let added = 0;
-      for (const p of places) {
-        const key = p.placeId ?? `${p.name}|${p.latitude?.toFixed(4)}|${p.longitude?.toFixed(4)}`;
-        if (!byKey.has(key)) {
-          byKey.set(key, p);
-          added++;
+    for (const [qi, q] of queries.entries()) {
+      if (qi > 0 && byKey.size >= Math.min(10, input.limit)) break; // la requête précise suffit
+      for (let offset = 0; byKey.size < input.limit && offset <= 120 && Date.now() < deadline; offset += 20) {
+        const places = await fetchPage(q, input.lat, input.lng, dist, offset);
+        let added = 0;
+        for (const p of places) {
+          const key = p.placeId ?? `${p.name}|${p.latitude?.toFixed(4)}|${p.longitude?.toFixed(4)}`;
+          if (!byKey.has(key)) {
+            byKey.set(key, p);
+            added++;
+          }
         }
+        if (added === 0 || places.length < 15) break;
+        await sleep(700 + Math.random() * 1000);
       }
-      if (added === 0 || places.length < 10) break;
-      await sleep(800 + Math.random() * 1200);
     }
     return [...byKey.values()].slice(0, input.limit);
   },
 };
+
+async function fetchPage(q: string, lat: number, lng: number, dist: number, offset: number): Promise<RawPlace[]> {
+  const pb = `!4m8!1m3!1d${dist}!2d${lng}!3d${lat}!3m2!1i1366!2i768!4f13.1!7i20!8i${offset}!10b1`;
+  const url =
+    `https://www.google.com/search?tbm=map&authuser=0&hl=fr&gl=sn` +
+    `&q=${encodeURIComponent(q)}&pb=${encodeURIComponent(pb)}`;
+  const res = await robustFetch(url, {
+    stealth: true,
+    retries: 1,
+    timeoutMs: 20_000,
+    headers: {
+      Accept: "*/*",
+      Referer: "https://www.google.com/maps",
+      // Consentement cookies pré-accepté (évite la page de consentement européenne).
+      Cookie: "CONSENT=YES+cb; SOCS=CAESHAgBEhJnd3NfMjAyMzA4MTAtMF9SQzIaAmZyIAEaBgiAo_CmBg",
+    },
+  });
+  if (res.status === 429 || /unusual traffic|\/sorry\/index|captcha/i.test(res.text.slice(0, 5000))) {
+    throw new ProviderError("Google a détecté un trafic automatisé (blocage temporaire)");
+  }
+  if (res.url.includes("consent.google")) throw new ProviderError("Page de consentement Google");
+  if (res.status >= 400) throw new ProviderError(`Google Maps HTTP ${res.status}`);
+  const data = parseGoogleJson(res.text);
+  if (data === undefined) throw new ProviderError("Format de réponse Google inattendu");
+  return extractPlaces(data);
+}
 
 export function parseGoogleJson(text: string): unknown {
   let body = text.trim();
