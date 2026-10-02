@@ -122,6 +122,12 @@ export function extractPlaces(root: unknown): RawPlace[] {
   return found;
 }
 
+/** « 1 910 avis » → 1910 */
+function reviewsFromText(t: string | null): number | null {
+  const digits = t?.replace(/[^\d]/g, "");
+  return digits ? Number(digits) : null;
+}
+
 function toPlace(p: Arr): RawPlace | null {
   const name = str(p[11]);
   if (!name) return null;
@@ -151,7 +157,7 @@ function toPlace(p: Arr): RawPlace | null {
     latitude: lat,
     longitude: lng,
     rating: num(at(p, 4, 7)),
-    reviewsCount: num(at(p, 4, 8)),
+    reviewsCount: num(at(p, 4, 8)) ?? reviewsFromText(str(at(p, 4, 3, 1))),
     placeId: placeId ?? cid,
     mapsUrl: placeId
       ? `https://www.google.com/maps/place/?q=place_id:${placeId}`
