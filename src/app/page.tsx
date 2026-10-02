@@ -7,7 +7,7 @@ import { env } from "@/lib/env";
 export const revalidate = 3600;
 
 const FEATURES = [
-  { icon: MapPin, title: "40 zones du Sénégal", text: "Plateau, Almadies, Mermoz, Parcelles, Pikine, Thiès, Saint-Louis, Touba… Ciblez au quartier près." },
+  { icon: MapPin, title: "38 zones du Sénégal", text: "Plateau, Almadies, Mermoz, Parcelles, Pikine, Thiès, Saint-Louis, Touba… Ciblez au quartier près." },
   { icon: Phone, title: "Numéros +221 normalisés", text: "Opérateur détecté (Orange, Free, Expresso) et lien WhatsApp direct pour chaque mobile." },
   { icon: Globe, title: "Emails & réseaux sociaux", text: "Le site officiel de chaque entreprise est analysé : email, Facebook, Instagram, LinkedIn, TikTok." },
   { icon: FileSpreadsheet, title: "Export Excel professionnel", text: "Fichier mis en forme, filtres activés, liens cliquables et feuille de synthèse. CSV compatible Excel FR." },

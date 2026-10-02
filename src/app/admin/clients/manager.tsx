@@ -124,8 +124,8 @@ export function ClientsManager() {
                           onClick={() => toggle(o)}
                           disabled={busyId === o.id}
                           className={o.status === "active"
-                            ? "inline-flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50"
-                            : "inline-flex items-center gap-1.5 rounded-lg border border-brand-200 px-3 py-1.5 text-xs font-semibold text-brand-700 hover:bg-brand-50"}
+                            ? "inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50"
+                            : "inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-brand-200 px-3 py-1.5 text-xs font-semibold text-brand-700 hover:bg-brand-50"}
                         >
                           {busyId === o.id ? <Spinner className="size-3.5" /> : o.status === "active" ? <Ban className="size-3.5" /> : <PlayCircle className="size-3.5" />}
                           {o.status === "active" ? "Couper l'accès" : "Rétablir"}

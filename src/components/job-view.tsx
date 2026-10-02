@@ -256,7 +256,7 @@ export function JobView({ id, backHref }: { id: string; backHref: string }) {
                         {l.rating ? (
                           <span className="inline-flex items-center gap-1 whitespace-nowrap text-sm font-semibold text-slate-800">
                             <Star className="size-3.5 fill-amber-400 text-amber-400" /> {Number(l.rating).toFixed(1)}
-                            <span className="text-xs font-normal text-slate-400">({l.reviews_count ?? 0})</span>
+                            {l.reviews_count != null && <span className="text-xs font-normal text-slate-400">({l.reviews_count})</span>}
                           </span>
                         ) : <span className="text-slate-400">—</span>}
                       </td>

@@ -22,7 +22,7 @@ export function SearchWizard() {
   const toast = useToast();
   const [keywords, setKeywords] = useState<string[]>(() => params.get("k")?.split("|").filter(Boolean) ?? []);
   const [zoneIds, setZoneIds] = useState<string[]>(() => params.get("z")?.split("|").filter(Boolean) ?? []);
-  const [sector, setSector] = useState(SECTORS[0].id);
+  const [sector, setSector] = useState(() => SECTORS.find((s) => s.activities.some((a) => keywords.includes(a.label)))?.id ?? SECTORS[0].id);
   const [custom, setCustom] = useState("");
   const [limit, setLimit] = useState(40);
   const [enrich, setEnrich] = useState(true);
@@ -66,7 +66,7 @@ export function SearchWizard() {
         {/* Étape 1 */}
         <section className="card p-6">
           <StepTitle n={1} icon={<Briefcase className="size-4" />} title="Quelles activités ?" done={keywords.length > 0} />
-          <div className="mt-4 flex gap-2 overflow-x-auto pb-2">
+          <div className="mt-4 flex flex-wrap gap-2">
             {SECTORS.map((s) => (
               <button
                 key={s.id}

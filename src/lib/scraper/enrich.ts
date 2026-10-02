@@ -15,7 +15,9 @@ export type Enrichment = {
 };
 
 const EMAIL_RE = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,24}/gi;
-const BAD_EMAIL = /(\.(png|jpe?g|gif|svg|webp|css|js|ico)$)|example\.|sentry|wixpress|domain\.com|yourdomain|@2x|godaddy|cloudflare|schema\.org|wordpress\.(org|com)$/i;
+const BAD_EMAIL = /(\.(png|jpe?g|gif|svg|webp|css|js|ico)$)|example\.|exemple\.|sentry|wixpress|domain\.com|yourdomain|@2x|godaddy|cloudflare|schema\.org|wordpress\.(org|com)$|@email\.com$|@mail\.com$|@test\./i;
+/** Adresses factices laissées par les modèles de sites (email@gmail.com, votre@…, nom@…). */
+const PLACEHOLDER_USER = /^(email|e-mail|votre|your|nom|name|prenom|username|test|exemple|example|jean|john|jane)(\.[a-z]+)?$/i;
 const SKIP_HOSTS = /(facebook|instagram|google|linkedin|twitter|x|tiktok|youtube|wa|whatsapp|linktr|bit)\.(com|ee|ly|me)$/i;
 const CONTACT_HINT = /contact|nous-contacter|contactez|about|a-propos|qui-sommes|mentions|coordonn/i;
 const PREFERRED = ["contact@", "info@", "commercial@", "direction@", "hello@", "bonjour@", "accueil@", "sales@", "admin@"];
@@ -93,7 +95,7 @@ export async function enrichWebsite(website: string, timeoutMs = 9_000): Promise
 
   const clean = [...emails]
     .map((e) => e.replace(/^[^a-z0-9]+|[^a-z0-9]+$/gi, ""))
-    .filter((e) => /^[^@\s]+@[^@\s]+\.[a-z]{2,24}$/i.test(e) && !BAD_EMAIL.test(e) && e.length < 80);
+    .filter((e) => /^[^@\s]+@[^@\s]+\.[a-z]{2,24}$/i.test(e) && !BAD_EMAIL.test(e) && !PLACEHOLDER_USER.test(e.split("@")[0]) && e.length < 80);
   const unique = [...new Set(clean)].sort((a, b) => {
     const sameDomain = (e: string) => (e.endsWith(base.hostname.replace(/^www\./, "")) ? 0 : 1);
     return sameDomain(a) - sameDomain(b);

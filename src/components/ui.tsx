@@ -13,7 +13,7 @@ export function Logo({ className = "", light = false }: { className?: string; li
         <path d="M32 19.5l2.3 4.8 5.2.7-3.8 3.6.9 5.2-4.6-2.5-4.6 2.5.9-5.2-3.8-3.6 5.2-.7z" fill="#00853f" />
       </svg>
       <span className={light ? "text-white" : "text-slate-900"}>
-        LeadScraper<span className="text-brand-600"> Dakar</span>
+        LeadScraper<span className={light ? "text-sun" : "text-brand-600"}> Dakar</span>
       </span>
     </span>
   );
