@@ -5,6 +5,7 @@ import { googleWeb } from "./providers/google-web";
 import { openStreetMap } from "./providers/osm";
 import { serpApi } from "./providers/serpapi";
 import type { Provider, ProviderId, RawPlace, SearchInput } from "./types";
+import { contactKeys } from "./dedupe";
 
 export const PROVIDERS: Record<ProviderId, Provider> = {
   google_places: googlePlaces,
@@ -63,33 +64,68 @@ export type SearchOutcome = {
   attempts: Array<{ provider: ProviderId; ok: boolean; count: number; error?: string }>;
 };
 
+/** 4 sous-zones (quadrants) : d'autres points de recherche donnent d'autres fiches. */
+export function subZones(input: Pick<SearchInput, "lat" | "lng" | "radiusKm">) {
+  const r = input.radiusKm * 0.55;
+  const dLat = r / 111;
+  const dLng = r / (111 * Math.cos((input.lat * Math.PI) / 180));
+  return [
+    [1, 1],
+    [1, -1],
+    [-1, 1],
+    [-1, -1],
+  ].map(([a, b]) => ({ lat: input.lat + a * dLat, lng: input.lng + b * dLng, radiusKm: r }));
+}
+
+const hasContact = (p: RawPlace) => !!(p.phone || p.website || p.email);
+
 /**
- * Exécute une recherche en essayant chaque source dans l'ordre.
- * Une source en erreur ou sans résultat passe la main à la suivante.
- * Si toutes les sources en pause échouent aussi, on les réessaie quand même :
- * l'objectif prioritaire est d'obtenir des données, pas la vitesse.
+ * Exécute une recherche en combinant les sources dans l'ordre jusqu'à obtenir `limit` contacts NOUVEAUX.
+ * - une source en erreur passe la main à la suivante (bascule automatique) ;
+ * - si la zone principale est épuisée (contacts déjà fournis), la source explore 4 sous-zones ;
+ * - les sources de complément ne gardent que des fiches avec un moyen de contact.
+ * Les sources en pause sont réessayées en dernier : l'objectif est d'obtenir des données, pas la vitesse.
  */
 export async function runSearch(input: SearchInput, deadline: number): Promise<SearchOutcome> {
   const chain = providerChain();
   const paused = await coolingDown().catch(() => new Set<string>());
   const ordered = [...chain.filter((p) => !paused.has(p.id)), ...chain.filter((p) => paused.has(p.id))];
   const attempts: SearchOutcome["attempts"] = [];
-  let best: { places: RawPlace[]; provider: ProviderId } | null = null;
+  const collected: RawPlace[] = [];
+  const taken = new Set<string>();
+  const exclude = (p: RawPlace) => contactKeys(p).some((k) => taken.has(k)) || (input.exclude?.(p) ?? false);
+  let primary: ProviderId | null = null;
 
   for (const provider of ordered) {
-    if (Date.now() > deadline - 5_000) break;
-    try {
-      const places = await provider.search(input, deadline);
+    if (collected.length >= input.limit || Date.now() > deadline - 5_000) break;
+    const before = collected.length;
+    const points = [{ lat: input.lat, lng: input.lng, radiusKm: input.radiusKm }, ...subZones(input)];
+    let failed: string | null = null;
+
+    for (const [i, point] of points.entries()) {
+      if (collected.length >= input.limit || Date.now() > deadline - 8_000) break;
+      try {
+        const places = await provider.search({ ...input, ...point, limit: input.limit - collected.length, exclude }, deadline);
+        for (const p of places) {
+          if (exclude(p)) continue;
+          if (primary && primary !== provider.id && !hasContact(p)) continue;
+          for (const k of contactKeys(p)) taken.add(k);
+          collected.push({ ...p, source: provider.id });
+        }
+        if (collected.length > before) primary ??= provider.id;
+      } catch (err) {
+        if (i === 0) failed = err instanceof Error ? err.message : String(err);
+        break; // une sous-zone en erreur : on garde ce qui a été trouvé
+      }
+    }
+
+    if (failed) {
+      await recordFailure(provider.id, failed).catch(() => {});
+      attempts.push({ provider: provider.id, ok: false, count: 0, error: failed });
+    } else {
       await recordSuccess(provider.id).catch(() => {});
-      attempts.push({ provider: provider.id, ok: true, count: places.length });
-      if (!best || places.length > best.places.length) best = { places, provider: provider.id };
-      // Résultat satisfaisant : on s'arrête. Sinon, on tente une autre source pour compléter.
-      if (places.length >= Math.min(5, input.limit)) break;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      await recordFailure(provider.id, message).catch(() => {});
-      attempts.push({ provider: provider.id, ok: false, count: 0, error: message });
+      attempts.push({ provider: provider.id, ok: true, count: collected.length - before });
     }
   }
-  return { places: best?.places ?? [], provider: best?.provider ?? null, attempts };
+  return { places: collected, provider: primary, attempts };
 }

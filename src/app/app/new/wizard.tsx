@@ -205,6 +205,7 @@ export function SearchWizard() {
               {submitting ? <Spinner /> : <Rocket className="size-4" />} Lancer la recherche
             </button>
             <p className="mt-3 text-center text-xs text-slate-500">Vous pouvez fermer la page : la collecte continue en arrière-plan.</p>
+            <p className="mt-2 text-center text-xs font-medium text-brand-700">Zéro doublon : seuls des contacts jamais fournis à votre entreprise sont livrés.</p>
           </div>
         </div>
       </aside>

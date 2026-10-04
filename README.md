@@ -70,6 +70,43 @@ Plusieurs mécanismes s'ajoutent à cette chaîne :
 
 ---
 
+## Zéro doublon par entreprise
+
+Un contact n'est **jamais livré deux fois au même client**, même s'il relance exactement la même recherche.
+
+- Chaque contact livré laisse des empreintes dans `app.org_contacts` : identifiant Google ou OSM, numéro de téléphone normalisé, nom et position à 100 m près.
+- Une fiche qui partage une seule de ces empreintes avec un contact déjà fourni est écartée. Exemple : la même entreprise trouvée par une autre source, ou avec un format de numéro différent.
+- Pour livrer quand même des contacts **nouveaux**, le moteur va plus loin :
+  - il pagine plus profondément dans les résultats ;
+  - il explore 4 sous-zones du quartier ;
+  - il complète avec les autres sources.
+- La réservation se fait sous verrou : deux recherches simultanées du même client ne peuvent pas se partager un contact.
+- Le client voit combien de doublons ont été écartés. Si tout a déjà été livré, il est invité à changer de quartier ou d'activité.
+
+## Sécurité
+
+| Risque | Protection |
+|---|---|
+| Vol de session | Cookie `HttpOnly`, `Secure`, `SameSite=Lax` ; jeton aléatoire de 256 bits stocké haché ; révocation immédiate (suspension, réinitialisation, déconnexion) |
+| Mots de passe | scrypt avec sel ; mots de passe générés de 12 caractères ; anti force brute (8 essais par email, 30 par IP, sur 15 min) ; temps de réponse identique que l'email existe ou non |
+| CSRF | Vérification `Origin` et `Sec-Fetch-Site` sur toutes les requêtes qui modifient des données, en plus de `SameSite` |
+| Accès aux données d'un autre client | Chaque requête est filtrée par entreprise ; routes admin réservées au super-admin |
+| Injection SQL | Requêtes paramétrées uniquement ; validation stricte des entrées (zod) |
+| XSS | Échappement par React ; liens externes limités à http(s), donc pas de `javascript:` ; CSP stricte |
+| SSRF (analyse des sites web) | Refus des IP internes, des hôtes locaux, de l'adresse de métadonnées cloud et des ports non standard ; chaque redirection est revérifiée |
+| Injection de formules Excel | Cellules CSV commençant par `= + - @` neutralisées |
+| Moteur et tâche planifiée | Secret obligatoire comparé en temps constant ; route refusée si le secret n'est pas configuré |
+| En-têtes | CSP, HSTS, `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy`, pas de cache sur l'API |
+| Base de données | Schéma privé non exposé par l'API Supabase ; rôle applicatif aux droits minimaux |
+| Dépendances | `npm audit` sans vulnérabilité connue |
+
+Tests :
+
+```bash
+npm test                                            # tests unitaires : sécurité, doublons, téléphones
+BASE_URL=https://votre-app.vercel.app TEST_EMAIL=… TEST_PASSWORD=… npm test   # + tests HTTP de bout en bout
+```
+
 ## Architecture
 
 - **Next.js 16** (App Router, TypeScript, Tailwind CSS 4), hébergé sur **Vercel**.

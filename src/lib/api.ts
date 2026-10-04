@@ -42,13 +42,31 @@ export async function parseBody<T>(req: Request, schema: ZodType<T>): Promise<T>
   return schema.parse(raw);
 }
 
-/** Protection CSRF : les requêtes qui modifient des données doivent venir de notre propre domaine. */
+/**
+ * Protection CSRF : les requêtes qui modifient des données doivent venir de notre propre domaine.
+ * (En complément du cookie SameSite=Lax.) Une requête sans en-tête Origin n'est acceptée
+ * que si le navigateur confirme qu'elle n'est pas inter-sites.
+ */
 export async function assertSameOrigin() {
   const h = await headers();
-  const origin = h.get("origin");
   const host = h.get("x-forwarded-host") ?? h.get("host");
-  if (origin && host && new URL(origin).host !== host) throw new HttpError(403, "Origine refusée");
+  const origin = h.get("origin");
+  const fetchSite = h.get("sec-fetch-site");
+  if (fetchSite === "cross-site") throw new HttpError(403, "Origine refusée");
+  if (origin) {
+    let originHost: string;
+    try {
+      originHost = new URL(origin).host;
+    } catch {
+      throw new HttpError(403, "Origine refusée");
+    }
+    if (!host || originHost !== host) throw new HttpError(403, "Origine refusée");
+  } else if (fetchSite && fetchSite !== "same-origin" && fetchSite !== "none") {
+    throw new HttpError(403, "Origine refusée");
+  }
 }
+
+export { bearerMatches } from "./security/secrets";
 
 export async function requireUser(opts: { allowBlocked?: boolean } = {}): Promise<SessionUser> {
   await ensureSuperAdmin();

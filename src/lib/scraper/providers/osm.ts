@@ -35,7 +35,7 @@ export function buildOverpassQuery(input: SearchInput): string {
   for (const key of ["shop", "office", "amenity", "craft", "tourism", "healthcare", "leisure"]) {
     parts.push(`nwr["${key}"]["name"~"${nameRe}",i](${box});`);
   }
-  return `[out:json][timeout:50];(${parts.join("")});out center tags ${Math.min(input.limit * 3, 600)};`;
+  return `[out:json][timeout:50];(${parts.join("")});out center tags ${Math.min(input.limit * 6 + 100, 1500)};`;
 }
 
 /** OpenStreetMap (Overpass) : gratuit, légal, sans clé, jamais bloquant. Source de secours ultime. */
@@ -67,7 +67,10 @@ export const openStreetMap: Provider = {
           continue;
         }
         const data = JSON.parse(res.text) as { elements?: OsmElement[] };
-        return (data.elements ?? []).map(toPlace).filter((p): p is RawPlace => !!p).slice(0, input.limit);
+        return (data.elements ?? [])
+          .map(toPlace)
+          .filter((p): p is RawPlace => !!p && !input.exclude?.(p))
+          .slice(0, input.limit);
       } catch (e) {
         lastError = `${new URL(endpoint).host}: ${e instanceof Error ? e.message : e}`;
       }

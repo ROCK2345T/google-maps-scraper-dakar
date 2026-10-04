@@ -1,4 +1,5 @@
 import ExcelJS from "exceljs";
+import { safeHttpUrl } from "./security/safe-url";
 
 export type LeadRow = {
   name: string;
@@ -84,8 +85,8 @@ export async function buildWorkbook(leads: LeadRow[], meta: { title: string; com
       cell.alignment = { vertical: "middle" };
       if (idx % 2 === 1) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF3F8F5" } };
       const v = cell.value;
-      if (c.link && typeof v === "string" && v) {
-        const target = c.key === "email" ? `mailto:${v}` : v;
+      const target = typeof v === "string" && v ? (c.key === "email" ? (/^[^\s@]+@[^\s@]+$/.test(v) ? `mailto:${v}` : null) : safeHttpUrl(v)) : null;
+      if (c.link && typeof v === "string" && target) {
         cell.value = { text: v, hyperlink: target };
         cell.font = { color: { argb: "FF0B63CE" }, underline: true };
       }
@@ -125,10 +126,20 @@ export async function buildWorkbook(leads: LeadRow[], meta: { title: string; com
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
 
+/**
+ * Protection contre l'injection de formules (CSV injection) : une cellule commençant par
+ * = + - @ serait exécutée par Excel. Les numéros de téléphone (+221 …) restent intacts.
+ */
+export function neutralizeFormula(s: string): string {
+  if (!/^[=+\-@\t\r]/.test(s)) return s;
+  if (/^[+-]?[\d\s().]+$/.test(s)) return s;
+  return `'${s}`;
+}
+
 /** CSV compatible Excel français : séparateur « ; » et BOM UTF-8 pour les accents. */
 export function buildCsv(leads: LeadRow[]): string {
   const esc = (v: unknown) => {
-    const s = v == null ? "" : String(v);
+    const s = neutralizeFormula(v == null ? "" : String(v));
     return /[";\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
   const lines = [COLUMNS.map((c) => c.header).join(";")];

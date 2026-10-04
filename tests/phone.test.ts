@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { normalizePhone, findSenegalPhones } from "../src/lib/scraper/phone.ts";
+import { normalizePhone, findSenegalPhones } from "../src/lib/scraper/phone";
 
 test("normalise un mobile Orange sans indicatif", () => {
   const p = normalizePhone("77 123 45 67");

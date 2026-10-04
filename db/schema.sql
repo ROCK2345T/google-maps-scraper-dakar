@@ -71,6 +71,7 @@ create table app.jobs (
   error text,
   provider_stats jsonb not null default '{}'::jsonb,
   log jsonb not null default '[]'::jsonb,
+  skipped_count integer not null default 0,
   locked_until timestamptz,
   lock_id text,
   heartbeat_at timestamptz,
@@ -134,6 +135,16 @@ create table app.leads (
 );
 create index on app.leads(organization_id, created_at);
 create index on app.leads(job_id, id);
+
+-- Empreintes des contacts déjà livrés à chaque entreprise : un contact n'est jamais fourni deux fois
+-- au même client, même sur des recherches différentes (pid:<id Google/OSM>, tel:<9 chiffres>, geo:<nom>|<lat>,<lng>).
+create table app.org_contacts (
+  organization_id uuid not null references app.organizations(id) on delete cascade,
+  key text not null,
+  job_id uuid references app.jobs(id) on delete set null,
+  created_at timestamptz not null default now(),
+  primary key (organization_id, key)
+);
 
 create table app.provider_health (
   provider text primary key,

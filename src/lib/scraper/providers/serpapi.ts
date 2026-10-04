@@ -27,7 +27,7 @@ export const serpApi: Provider = {
   available: () => !!env.serpApiKey,
   async search(input, deadline) {
     const out: RawPlace[] = [];
-    for (let start = 0; start < input.limit && start <= 100 && Date.now() < deadline; start += 20) {
+    for (let start = 0; out.length < input.limit && start <= 100 && Date.now() < deadline; start += 20) {
       const params = new URLSearchParams({
         engine: "google_maps",
         type: "search",
@@ -52,7 +52,7 @@ export const serpApi: Provider = {
       const batch = data.local_results ?? [];
       for (const r of batch) {
         if (!r.title) continue;
-        out.push({
+        const place: RawPlace = {
           name: r.title,
           category: r.type ?? null,
           phone: r.phone ?? null,
@@ -65,7 +65,8 @@ export const serpApi: Provider = {
           placeId: r.place_id ?? null,
           mapsUrl: r.place_id ? `https://www.google.com/maps/place/?q=place_id:${r.place_id}` : null,
           openingHours: r.hours ?? r.open_state ?? null,
-        });
+        };
+        if (!input.exclude?.(place)) out.push(place);
       }
       if (batch.length < 20) break;
     }

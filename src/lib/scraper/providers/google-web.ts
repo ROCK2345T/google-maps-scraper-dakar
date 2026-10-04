@@ -21,19 +21,20 @@ export const googleWeb: Provider = {
     const city = /dakar/i.test(hint) ? "Dakar" : hint.split(" ").slice(-1)[0];
     const queries = [`${input.keyword} ${hint}`, `${input.keyword} ${city} Sénégal`];
 
-    for (const [qi, q] of queries.entries()) {
-      if (qi > 0 && byKey.size >= Math.min(10, input.limit)) break; // la requête précise suffit
-      for (let offset = 0; byKey.size < input.limit && offset <= 120 && Date.now() < deadline; offset += 20) {
+    const rawSeen = new Set<string>();
+    for (const q of queries) {
+      // On pagine jusqu'à obtenir assez de contacts NOUVEAUX (les fiches déjà fournies sont sautées).
+      for (let offset = 0; byKey.size < input.limit && offset <= 180 && Date.now() < deadline; offset += 20) {
         const places = await fetchPage(q, input.lat, input.lng, dist, offset);
-        let added = 0;
+        let fresh = 0;
         for (const p of places) {
           const key = p.placeId ?? `${p.name}|${p.latitude?.toFixed(4)}|${p.longitude?.toFixed(4)}`;
-          if (!byKey.has(key)) {
-            byKey.set(key, p);
-            added++;
-          }
+          if (rawSeen.has(key)) continue;
+          rawSeen.add(key);
+          fresh++;
+          if (!input.exclude?.(p)) byKey.set(key, p);
         }
-        if (added === 0 || places.length < 15) break;
+        if (fresh === 0 || places.length < 15) break; // fin des résultats pour cette requête
         await sleep(700 + Math.random() * 1000);
       }
     }

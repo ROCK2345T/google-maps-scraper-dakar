@@ -59,7 +59,7 @@ export async function enrichWebsite(website: string, timeoutMs = 9_000): Promise
     seen.add(url);
     let html: string;
     try {
-      const res = await robustFetch(url, { timeoutMs, retries: 0, maxBytes: 1_500_000 });
+      const res = await robustFetch(url, { timeoutMs, retries: 0, maxBytes: 1_500_000, publicOnly: true });
       if (res.status >= 400) continue;
       html = res.text;
     } catch {

@@ -36,6 +36,10 @@ export function generatePassword(): string {
   return `${chars.slice(0, 4).join("")}-${chars.slice(4, 8).join("")}-${chars.slice(8, 12).join("")}`;
 }
 
+/** Hachage factice (mot de passe inconnu) utilisé quand l'email n'existe pas. */
+export const DUMMY_PASSWORD_HASH =
+  "scrypt$AAAAAAAAAAAAAAAAAAAAAA==$" + Buffer.alloc(64).toString("base64");
+
 function hashToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
 }

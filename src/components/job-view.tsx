@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ArrowLeft, Building2, Download, FileSpreadsheet, Globe, Mail, MapPin, MessageCircle, Phone, Search, Square, Star, Terminal,
+  ArrowLeft, Building2, Download, FileSpreadsheet, Globe, Mail, MapPin, MessageCircle, Phone, Search, ShieldCheck, Square, Star, Terminal,
 } from "lucide-react";
 import { Facebook, Instagram, Linkedin } from "./brand-icons";
 import { api } from "./api-client";
+import { safeHttpUrl } from "@/lib/security/safe-url";
 import { useToast } from "./toast";
 import { Badge, EmptyState, JOB_STATUS, ProgressBar, Spinner, StatCard, cx, fmtDate, fmtNum } from "./ui";
 
@@ -18,7 +19,7 @@ type Lead = {
 };
 type Job = {
   id: string; title: string; status: string; stage: string; tasks_total: number; tasks_done: number; leads_count: number;
-  message: string | null; error: string | null; provider_stats: Record<string, number>; log: { t: string; level: string; msg: string }[];
+  message: string | null; error: string | null; skipped_count?: number; provider_stats: Record<string, number>; log: { t: string; level: string; msg: string }[];
   created_at: string; finished_at: string | null;
 };
 type Resp = { job: Job; leads: Lead[]; stats: { phones: number; emails: number; sites: number; whatsapp: number } };
@@ -156,6 +157,13 @@ export function JobView({ id, backHref }: { id: string; backHref: string }) {
         <StatCard label="Emails" value={fmtNum(stats?.emails)} icon={<Mail className="size-5" />} accent="amber" />
       </div>
 
+      {!!job.skipped_count && (
+        <div className="mt-4 flex items-center gap-2 rounded-xl border border-brand-200 bg-brand-50 px-4 py-2.5 text-sm text-brand-800">
+          <ShieldCheck className="size-4 shrink-0" />
+          Zéro doublon : {fmtNum(job.skipped_count)} contact(s) déjà fourni(s) à votre entreprise lors de recherches précédentes ont été écartés.
+        </div>
+      )}
+
       {Object.keys(job.provider_stats ?? {}).length > 0 && (
         <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-slate-500">
           Sources utilisées :
@@ -233,7 +241,7 @@ export function JobView({ id, backHref }: { id: string; backHref: string }) {
                               {l.operator && <Badge color={OP_COLOR[l.operator] ?? "slate"}>{l.operator}</Badge>}
                             </span>
                             {l.whatsapp && (
-                              <a href={l.whatsapp} target="_blank" rel="noreferrer" className="inline-flex w-fit items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100">
+                              <a href={safeHttpUrl(l.whatsapp) ?? undefined} target="_blank" rel="noreferrer" className="inline-flex w-fit items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100">
                                 <MessageCircle className="size-3.5" /> WhatsApp
                               </a>
                             )}
@@ -243,11 +251,11 @@ export function JobView({ id, backHref }: { id: string; backHref: string }) {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap items-center gap-2 text-slate-500">
-                          {l.website && <a href={l.website} target="_blank" rel="noreferrer" title={l.website} className="hover:text-brand-700"><Globe className="size-4" /></a>}
-                          {l.facebook && <a href={l.facebook} target="_blank" rel="noreferrer" title="Facebook" className="hover:text-blue-600"><Facebook className="size-4" /></a>}
-                          {l.instagram && <a href={l.instagram} target="_blank" rel="noreferrer" title="Instagram" className="hover:text-pink-600"><Instagram className="size-4" /></a>}
-                          {l.linkedin && <a href={l.linkedin} target="_blank" rel="noreferrer" title="LinkedIn" className="hover:text-sky-700"><Linkedin className="size-4" /></a>}
-                          {l.maps_url && <a href={l.maps_url} target="_blank" rel="noreferrer" title="Voir sur la carte" className="hover:text-red-600"><MapPin className="size-4" /></a>}
+                          {l.website && <a href={safeHttpUrl(l.website) ?? undefined} target="_blank" rel="noreferrer" title={l.website} className="hover:text-brand-700"><Globe className="size-4" /></a>}
+                          {l.facebook && <a href={safeHttpUrl(l.facebook) ?? undefined} target="_blank" rel="noreferrer" title="Facebook" className="hover:text-blue-600"><Facebook className="size-4" /></a>}
+                          {l.instagram && <a href={safeHttpUrl(l.instagram) ?? undefined} target="_blank" rel="noreferrer" title="Instagram" className="hover:text-pink-600"><Instagram className="size-4" /></a>}
+                          {l.linkedin && <a href={safeHttpUrl(l.linkedin) ?? undefined} target="_blank" rel="noreferrer" title="LinkedIn" className="hover:text-sky-700"><Linkedin className="size-4" /></a>}
+                          {l.maps_url && <a href={safeHttpUrl(l.maps_url) ?? undefined} target="_blank" rel="noreferrer" title="Voir sur la carte" className="hover:text-red-600"><MapPin className="size-4" /></a>}
                           {!l.website && !l.facebook && !l.instagram && !l.linkedin && !l.maps_url && <span className="text-slate-400">—</span>}
                         </div>
                       </td>

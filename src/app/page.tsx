@@ -11,6 +11,7 @@ const FEATURES = [
   { icon: Phone, title: "Numéros +221 normalisés", text: "Opérateur détecté (Orange, Free, Expresso) et lien WhatsApp direct pour chaque mobile." },
   { icon: Globe, title: "Emails & réseaux sociaux", text: "Le site officiel de chaque entreprise est analysé : email, Facebook, Instagram, LinkedIn, TikTok." },
   { icon: FileSpreadsheet, title: "Export Excel professionnel", text: "Fichier mis en forme, filtres activés, liens cliquables et feuille de synthèse. CSV compatible Excel FR." },
+  { icon: CheckCircle2, title: "Zéro doublon, toujours du neuf", text: "Un contact n'est jamais livré deux fois à votre entreprise : chaque nouvelle recherche, même sur la même niche, ne fournit que des prospects inédits." },
   { icon: Zap, title: "Moteur multi-sources", text: "Plusieurs sources de données avec bascule automatique : si une source est indisponible, une autre prend le relais." },
   { icon: ShieldCheck, title: "Sécurisé & privé", text: "Chaque entreprise a son espace isolé, ses utilisateurs et son historique. Données hébergées sur une infrastructure cloud." },
 ];

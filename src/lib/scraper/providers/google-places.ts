@@ -79,7 +79,7 @@ export const googlePlaces: Provider = {
       }
       for (const p of data.places ?? []) {
         if (!p.displayName?.text) continue;
-        out.push({
+        const place: RawPlace = {
           name: p.displayName.text,
           category: p.primaryTypeDisplayName?.text ?? null,
           phone: p.internationalPhoneNumber ?? p.nationalPhoneNumber ?? null,
@@ -93,7 +93,8 @@ export const googlePlaces: Provider = {
           placeId: p.id ?? null,
           businessStatus: p.businessStatus ?? null,
           openingHours: p.regularOpeningHours?.weekdayDescriptions?.join(" | ") ?? null,
-        });
+        };
+        if (!input.exclude?.(place)) out.push(place);
       }
       pageToken = data.nextPageToken;
       if (!pageToken) break;

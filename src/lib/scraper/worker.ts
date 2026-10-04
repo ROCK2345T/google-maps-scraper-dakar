@@ -6,7 +6,8 @@ import { ZONE_BY_ID } from "../data/zones";
 import { enrichWebsite } from "./enrich";
 import { runSearch } from "./engine";
 import { normalizePhone } from "./phone";
-import type { RawPlace } from "./types";
+import { contactKeys, phoneKey, SeenContacts } from "./dedupe";
+import { safeHttpUrl } from "../security/safe-url";
 
 /** Paramètres d'une recherche lancée par un client. */
 export type JobParams = {
@@ -198,7 +199,9 @@ async function advanceStage(job: JobRow): Promise<boolean> {
   const status = leads_count === 0 && failedAll[0].c === 0 ? "failed" : "completed";
   await sql`
     update app.jobs set status = ${status}, stage = 'done', finished_at = now(),
-      message = ${status === "completed" ? `Terminé : ${leads_count} entreprises trouvées.` : "Aucune source n'a pu répondre. Réessayez plus tard."},
+      message = ${status === "failed" ? "Aucune source n'a pu répondre. Réessayez plus tard."
+        : leads_count > 0 ? `Terminé : ${leads_count} nouveaux contacts trouvés.`
+        : "Aucun nouveau contact : tous les résultats de cette recherche ont déjà été fournis à votre entreprise. Essayez d'autres quartiers ou activités."},
       error = ${status === "failed" ? "Toutes les sources ont échoué" : null}
     where id = ${job.id}`;
   await log(job.id, status === "completed" ? `Terminé ✔ ${leads_count} entreprises prêtes à l'export.` : "Échec : aucune source disponible.", status === "completed" ? "success" : "error");
@@ -217,15 +220,40 @@ async function remainingQuota(orgId: string): Promise<number> {
   return r ? r.quota - r.used : 0;
 }
 
-function normName(s: string) {
-  return s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+async function loadOrgKeys(orgId: string): Promise<string[]> {
+  const rows = await db()<{ key: string }[]>`select key from app.org_contacts where organization_id = ${orgId}`;
+  return rows.map((r) => r.key);
 }
 
-export function dedupeKey(p: RawPlace, phoneIntl: string | null): string {
-  if (phoneIntl) return `p:${phoneIntl.replace(/\D/g, "").slice(-9)}`;
-  const n = normName(p.name);
-  if (p.latitude != null && p.longitude != null) return `n:${n}|${p.latitude.toFixed(3)},${p.longitude.toFixed(3)}`;
-  return `n:${n}`;
+/**
+ * Réserve les contacts pour l'entreprise : un contact dont une empreinte est déjà connue est refusé.
+ * Le verrou sur la ligne de l'entreprise sérialise les recherches simultanées d'un même client,
+ * ce qui garantit qu'un contact n'est jamais livré deux fois, même en parallèle.
+ */
+async function claimContacts<T extends { keys: string[] }>(orgId: string, jobId: string, candidates: T[]): Promise<T[]> {
+  if (!candidates.length) return [];
+  const accepted: T[] = [];
+  await db().begin(async (tx) => {
+    await tx`select 1 from app.organizations where id = ${orgId} for update`;
+    const allKeys = [...new Set(candidates.flatMap((c) => c.keys))];
+    const taken = new Set(
+      (await tx<{ key: string }[]>`
+        select key from app.org_contacts where organization_id = ${orgId} and key = any(${allKeys}::text[])`).map((r) => r.key),
+    );
+    for (const c of candidates) {
+      if (!c.keys.length || c.keys.some((k) => taken.has(k))) continue;
+      c.keys.forEach((k) => taken.add(k));
+      accepted.push(c);
+    }
+    const keys = accepted.flatMap((c) => c.keys);
+    if (keys.length) {
+      await tx`
+        insert into app.org_contacts (organization_id, key, job_id)
+        select ${orgId}, k, ${jobId} from unnest(${keys}::text[]) as k
+        on conflict do nothing`;
+    }
+  });
+  return accepted;
 }
 
 async function runSearchTask(job: JobRow, task: TaskRow, deadline: number) {
@@ -241,6 +269,9 @@ async function runSearchTask(job: JobRow, task: TaskRow, deadline: number) {
     throw new Error("QUOTA");
   }
 
+  // Contacts déjà fournis à cette entreprise (toutes recherches confondues) : jamais reproposés.
+  const seen = new SeenContacts(await loadOrgKeys(job.organization_id));
+
   await log(job.id, `Recherche « ${keyword} » — ${zone.name}`);
   const outcome = await runSearch(
     {
@@ -250,8 +281,9 @@ async function runSearchTask(job: JobRow, task: TaskRow, deadline: number) {
       lat: zone.lat,
       lng: zone.lng,
       radiusKm: zone.radiusKm,
-      limit: job.params.limitPerQuery,
+      limit: Math.min(job.params.limitPerQuery, Math.max(quota, 1)),
       osmFilters: osmFiltersFor(keyword),
+      exclude: (p) => p.businessStatus === "CLOSED_PERMANENTLY" || seen.has(p),
     },
     deadline,
   );
@@ -260,15 +292,15 @@ async function runSearchTask(job: JobRow, task: TaskRow, deadline: number) {
 
   if (!outcome.provider && outcome.attempts.every((a) => !a.ok)) throw new Error("Toutes les sources ont échoué pour cette requête");
 
-  const rows = outcome.places
-    .filter((p) => p.businessStatus !== "CLOSED_PERMANENTLY")
-    .slice(0, Math.max(0, quota))
-    .map((p) => {
-      const ph = normalizePhone(p.phone);
-      return {
+  const candidates = outcome.places.slice(0, Math.max(0, quota)).map((p) => {
+    const ph = normalizePhone(p.phone);
+    const keys = contactKeys(p);
+    return {
+      keys,
+      row: {
         job_id: job.id,
         organization_id: job.organization_id,
-        dedupe_key: dedupeKey(p, ph?.intl ?? null),
+        dedupe_key: keys[0] ?? `name:${p.name.toLowerCase()}`,
         name: p.name.slice(0, 300),
         category: p.category ?? null,
         activity: keyword,
@@ -279,39 +311,48 @@ async function runSearchTask(job: JobRow, task: TaskRow, deadline: number) {
         whatsapp: ph?.whatsapp || null,
         email: p.email?.toLowerCase() ?? null,
         emails: p.email ? [p.email.toLowerCase()] : [],
-        website: p.website ?? null,
+        website: safeHttpUrl(p.website),
         address: p.address ?? null,
         latitude: p.latitude ?? null,
         longitude: p.longitude ?? null,
         rating: p.rating ?? null,
         reviews_count: p.reviewsCount ?? null,
-        maps_url: p.mapsUrl ?? null,
+        maps_url: safeHttpUrl(p.mapsUrl),
         place_id: p.placeId ?? null,
-        facebook: p.facebook ?? null,
-        instagram: p.instagram ?? null,
+        facebook: safeHttpUrl(p.facebook),
+        instagram: safeHttpUrl(p.instagram),
         opening_hours: p.openingHours ?? null,
         business_status: p.businessStatus ?? null,
-        source: outcome.provider,
-      };
-    });
+        source: p.source ?? outcome.provider,
+      },
+    };
+  });
 
+  const accepted = await claimContacts(job.organization_id, job.id, candidates);
+  const rows = accepted.map((c) => c.row);
   let inserted = 0;
   if (rows.length) {
     const res = await sql`insert into app.leads ${sql(rows)} on conflict (job_id, dedupe_key) do nothing returning id`;
     inserted = res.length;
   }
+  const skipped = seen.skippedCount + (candidates.length - accepted.length);
 
   await sql`
     update app.job_tasks set provider = ${outcome.provider}, result_count = ${inserted} where id = ${task.id}`;
-  if (outcome.provider) {
+  const bySource = new Map<string, number>();
+  for (const r of rows) if (r.source) bySource.set(r.source, (bySource.get(r.source) ?? 0) + 1);
+  for (const [src, n] of bySource) {
     await sql`
-      update app.jobs set provider_stats = jsonb_set(provider_stats, ${[outcome.provider]}::text[],
-        to_jsonb(coalesce((provider_stats ->> ${outcome.provider})::int, 0) + ${inserted}))
+      update app.jobs set provider_stats = jsonb_set(provider_stats, ${[src]}::text[],
+        to_jsonb(coalesce((provider_stats ->> ${src})::int, 0) + ${n}))
       where id = ${job.id}`;
   }
+  if (skipped) await sql`update app.jobs set skipped_count = skipped_count + ${skipped} where id = ${job.id}`;
   await log(
     job.id,
-    `${inserted} nouvelle(s) entreprise(s) « ${keyword} » à ${zone.name}${outcome.provider ? ` (source : ${outcome.provider})` : ""}`,
+    `${inserted} nouveau(x) contact(s) « ${keyword} » à ${zone.name}` +
+      (skipped ? ` · ${skipped} déjà fourni(s) à votre entreprise, ignoré(s)` : "") +
+      (outcome.provider ? ` (source : ${[...bySource.keys()].join(", ") || outcome.provider})` : ""),
     inserted > 0 ? "success" : "info",
   );
 }
@@ -342,18 +383,23 @@ async function runEnrichTask(job: JobRow, task: TaskRow) {
       update app.leads set
         email = coalesce(email, ${e.email}),
         emails = case when cardinality(emails) = 0 then ${e.emails}::text[] else emails end,
-        facebook = coalesce(facebook, ${e.facebook}),
-        instagram = coalesce(instagram, ${e.instagram}),
-        linkedin = coalesce(linkedin, ${e.linkedin}),
-        twitter = coalesce(twitter, ${e.twitter}),
-        tiktok = coalesce(tiktok, ${e.tiktok}),
-        youtube = coalesce(youtube, ${e.youtube}),
+        facebook = coalesce(facebook, ${safeHttpUrl(e.facebook)}),
+        instagram = coalesce(instagram, ${safeHttpUrl(e.instagram)}),
+        linkedin = coalesce(linkedin, ${safeHttpUrl(e.linkedin)}),
+        twitter = coalesce(twitter, ${safeHttpUrl(e.twitter)}),
+        tiktok = coalesce(tiktok, ${safeHttpUrl(e.tiktok)}),
+        youtube = coalesce(youtube, ${safeHttpUrl(e.youtube)}),
         phone = coalesce(phone, ${ph?.display ?? null}),
         phone_intl = coalesce(phone_intl, ${ph?.intl ?? null}),
         operator = coalesce(operator, ${ph?.operator || null}),
         whatsapp = coalesce(whatsapp, ${ph?.whatsapp || null}),
         enriched = true
       where id = ${lead.id}`;
+    const tel = ph ? phoneKey(ph.intl) : null;
+    if (tel) {
+      await sql`insert into app.org_contacts (organization_id, key, job_id)
+        values (${job.organization_id}, ${tel}, ${job.id}) on conflict do nothing`;
+    }
   }
   if (found) await log(job.id, `${found} email(s) trouvé(s) sur les sites web`, "success");
 }

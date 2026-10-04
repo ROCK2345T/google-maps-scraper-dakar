@@ -1,7 +1,8 @@
-import { handler, ok } from "@/lib/api";
+import { assertSameOrigin, handler, ok } from "@/lib/api";
 import { destroySession } from "@/lib/auth";
 
 export const POST = handler(async () => {
+  await assertSameOrigin();
   await destroySession();
   return ok({ redirect: "/login" });
 });

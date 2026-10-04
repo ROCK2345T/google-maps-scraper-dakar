@@ -1,5 +1,6 @@
 import { ProxyAgent, type Dispatcher } from "undici";
 import { env } from "../env";
+import { assertPublicUrl } from "../security/url";
 import { ProviderError } from "./types";
 
 /** Empreintes de navigateurs réels, en rotation pour limiter la détection. */
@@ -39,6 +40,11 @@ export type FetchOptions = {
   /** Passe par les proxys / la passerelle anti-blocage si configurés. */
   stealth?: boolean;
   maxBytes?: number;
+  /**
+   * URL d'origine tierce (site d'une entreprise) : chaque saut de redirection est vérifié
+   * pour ne jamais atteindre une adresse interne (protection SSRF).
+   */
+  publicOnly?: boolean;
 };
 
 /**
@@ -46,7 +52,7 @@ export type FetchOptions = {
  * rotation d'empreinte navigateur, proxys et passerelle anti-blocage optionnels.
  */
 export async function robustFetch(url: string, opts: FetchOptions = {}): Promise<{ status: number; text: string; url: string }> {
-  const { method = "GET", body, timeoutMs = 20_000, retries = 2, stealth = false, maxBytes = 6_000_000 } = opts;
+  const { method = "GET", body, timeoutMs = 20_000, retries = 2, stealth = false, maxBytes = 6_000_000, publicOnly = false } = opts;
   let lastErr: unknown;
 
   for (let attempt = 0; attempt <= retries; attempt++) {
@@ -71,7 +77,22 @@ export async function robustFetch(url: string, opts: FetchOptions = {}): Promise
         const d = proxyDispatcher();
         if (d) init.dispatcher = d;
       }
-      const res = await fetch(target, init as RequestInit);
+      let res: Response;
+      if (publicOnly) {
+        init.redirect = "manual";
+        let current = target;
+        for (let hop = 0; ; hop++) {
+          await assertPublicUrl(current);
+          res = await fetch(current, init as RequestInit);
+          const location = res.headers.get("location");
+          if (res.status < 300 || res.status >= 400 || !location) break;
+          if (hop >= 4) throw new Error("Trop de redirections");
+          await res.body?.cancel();
+          current = new URL(location, current).toString();
+        }
+      } else {
+        res = await fetch(target, init as RequestInit);
+      }
       const buf = await readLimited(res, maxBytes);
       const text = new TextDecoder("utf-8").decode(buf);
       if (res.status === 429 || res.status >= 500) {

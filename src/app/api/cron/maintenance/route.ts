@@ -1,12 +1,14 @@
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
+import { bearerMatches } from "@/lib/api";
 import { kickWorker, resumeStalledJobs } from "@/lib/scraper/worker";
 
 export const maxDuration = 60;
 
 /** Tâche quotidienne : nettoyage, relance des travaux bloqués, garde la base active. */
 export async function GET(req: Request) {
-  if (env.cronSecret && req.headers.get("authorization") !== `Bearer ${env.cronSecret}`) {
+  // Refusé si CRON_SECRET n'est pas configuré : la route ne doit jamais être publique.
+  if (!bearerMatches(req.headers.get("authorization"), env.cronSecret)) {
     return Response.json({ error: "Non autorisé" }, { status: 401 });
   }
   const sql = db();

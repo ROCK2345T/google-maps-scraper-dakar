@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 import { z } from "zod";
 import { audit, assertSameOrigin, handler, HttpError, ok, parseBody } from "@/lib/api";
-import { accessBlockReason, clientIp, createSession, ensureSuperAdmin, verifyPassword } from "@/lib/auth";
+import { accessBlockReason, clientIp, createSession, DUMMY_PASSWORD_HASH, ensureSuperAdmin, verifyPassword } from "@/lib/auth";
 import { db } from "@/lib/db";
 
 const schema = z.object({ email: z.string().trim().toLowerCase().email("Email invalide"), password: z.string().min(1).max(200) });
@@ -30,7 +30,8 @@ export const POST = handler(async (req: Request) => {
     from app.users u left join app.organizations o on o.id = u.organization_id
     where u.email = ${email}`;
 
-  const valid = user && (await verifyPassword(password, user.password_hash));
+  // Toujours calculer un hachage : le temps de réponse ne révèle pas si l'email existe.
+  const valid = (await verifyPassword(password, user?.password_hash ?? DUMMY_PASSWORD_HASH)) && !!user;
   await sql`insert into app.login_attempts (email, ip, success) values (${email}, ${ip}, ${!!valid})`;
   if (!user || !valid) throw new HttpError(401, "Email ou mot de passe incorrect.");
   if (!user.is_active) throw new HttpError(403, "Ce compte a été désactivé. Contactez votre fournisseur.");

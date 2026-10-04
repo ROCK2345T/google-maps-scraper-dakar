@@ -15,6 +15,8 @@ export type RawPlace = {
   businessStatus?: string | null;
   facebook?: string | null;
   instagram?: string | null;
+  /** Source ayant fourni la fiche (renseignée par le moteur). */
+  source?: ProviderId;
 };
 
 export type SearchInput = {
@@ -24,8 +26,11 @@ export type SearchInput = {
   lat: number;
   lng: number;
   radiusKm: number;
+  /** Nombre de contacts NOUVEAUX souhaités (les fiches exclues ne comptent pas). */
   limit: number;
   osmFilters: string[];
+  /** Fiches à ignorer : contacts déjà fournis à l'entreprise ou déjà retenus. */
+  exclude?: (p: RawPlace) => boolean;
 };
 
 export type ProviderId = "google_places" | "serpapi" | "google_web" | "osm";
